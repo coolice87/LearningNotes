@@ -1,0 +1,128 @@
+1、linux虚拟内存操作
+（1）脏数据超过内存的百分比, pdflush进程将脏数据写回磁盘(%：10)
+echo 5 > /proc/sys/vm/dirty_background_ratio 
+
+（2）进程脏数据超过内存的百分比, 进程自动将脏数据写回磁盘（%）
+echo 5 > /proc/sys/vm/dirty_ratio
+
+（3）脏数据在内存中驻留时间超过设定值，pdflush进程将脏数据写回磁盘（1/100s：3000）
+echo 1000 > /proc/sys/vm/dirty_expire_centisecs
+
+（4）pdflush进程每隔多久自动运行一次(1/100s：500)
+echo 100 > /proc/sys/vm/dirty_writeback_centisecs
+
+（5）linux VM最低保留时间
+echo 2048 > /proc/sys/vm/min_free_kbytes
+
+（6）写入时，内核清空缓存相当于sync（0）
+清空页缓存
+echo 1 > /proc/sys/vm/drop_caches
+清空inode目录
+echo 2 > /proc/sys/vm/drop_caches
+都清空
+echo 3 > /proc/sys/vm/drop_caches
+
+（7）设置虚拟内存回收directory和i-node缓冲的倾向（defalut:100）
+echo 200 >/proc/sys/vm/vfs_cache_pressure
+推荐值200, 参数越大回收倾向越严重
+
+2、非对齐访问
+在linux下对alignment trap的处理方法：
+0（ignored）
+1(warn)
+2(fixup)
+3(fixup+warn)
+4(signal)
+5(signal + warn)
+echo 5 >/proc/cpu/aligment
+
+修改arch/arm/mm/aligment.c来修改处理方法的值。
+
+3、TCP缓冲区大小
+/proc/sys/net/ipv4 # cat tcp_rmem 
+/proc/sys/net/ipv4 # cat tcp_wmem 
+收发的默认缓冲数
+/proc/sys/net/core # cat rmem_max 
+/proc/sys/net/core # cat wmem_max 
+收发的最大值
+
+4、查看内核线程限制
+当前设备线程栈空间大小为 8M，Ulimit可以查看栈大小
+    -d: data seg size (kb)             unlimited
+    -s: stack size (kb)                8192  （8M）
+    -c: core file size (blocks)        0
+    -m: resident set size (kb)         unlimited
+    -l: locked memory (kb)             64
+    -p: processes                      1856
+    -n: file descriptors               1024
+    栈空间为虚拟栈空间大小， 非实际栈内存
+设备理论上支持最大线程数和进程数， /proc/sys/kernel/
+    cat threads-max 
+    3712
+    cat pid_max 
+    32768
+    这么大的数只要不是服务器是绝对够的
+实际理论算出的线程数
+    我们的设备一般都是3+1模型，3G usr + 1G kenel。
+    理论算出线程数：3G/8M = 384
+    实际：用户空间达不到3G，另外用户空间不可能全部当做线程栈空间，所以实际可用线程数远小于384
+应用起来后Challenge线程数
+    VmSwap:        0 kB
+    Threads:        97
+    SigQ:   0/1856
+    这个在默认配置下，如果功能全部打开可能会很多。
+解决方法
+    （1）减少栈空间大小，增加线程数。隐患：栈太小导致线程运行过程中栈空间不够导致其他问题。
+    （2）尽量控制线程数在合理范围内。
+    
+5、查看进程各种状态
+cat /proc/<pid>/status，具体内容如下：
+
+Name:   Challenge			//进程名字
+State:  S (sleeping)	//任务状态, 运行/睡眠/僵死/
+Tgid:   1217		//线程组号
+Pid:    1217		//任务ID
+PPid:   1216		//父进程ID
+TracerPid:      0	//接收跟踪该进程信号的进程ID号
+Uid:    0       0       0       0
+Gid:    0       0       0       0
+FDSize: 1024		//文件描述符最大个数
+Groups: 0 			//启动该进程用户所属的组ID
+VmPeak:  1024008 kB			//进程地址空间的大小,进程运行过程中占用内存的峰值
+VmSize:   999968 kB			//虚拟地址空间大小（total_vm进程地址空间大小 - reserved_vm进程在预留的内存间物理页）
+VmLck:         0 kB			//已经锁定的物理内存大小（loack_vm）
+VmHWM:    162808 kB			//应用程序使用物理内存大小峰值
+VmRSS:    161732 kB			//应用程序正在使用的物理内存大小
+VmData:   980616 kB			//程序数据段的大小（所占虚拟内存大小）,存放了初始化数据（total_vm - shared_vm - stack_vm）
+VmStk:       136 kB			//任务用户堆栈大小（stack_vm）
+VmExe:     18680 kB			//程序拥有的可执行虚拟内存大小，代码段，不包括任务使用的库（end_code_start_code）
+VmLib:         0 kB			//被映像到任务的虚拟内存空间的库大小（exec_lib）
+VmPTE:       426 kB			//该进程页表大小
+VmSwap:        0 kB		
+Threads:        96			//线程个数
+SigQ:   0/1935					//待处理信号个数
+SigPnd: 0000000000000000	//屏蔽位，存储了该线程的待处理信号
+ShdPnd: 0000000000000000	//屏蔽位，存储了该线程组的待处理信号
+SigBlk: 0000000000000000	//存放被阻塞的信号
+SigIgn: 0000000000000001	//存放被忽略信号
+SigCgt: 00000001e0001cfe	//存放被俘获到的信号
+CapInh: 0000000000000000	//能被当前进程执行的程序的继承能力
+CapPrm: ffffffffffffffff	//进程能够使用的能力
+CapEff: ffffffffffffffff	//进程有效能力
+CapBnd: ffffffffffffffff
+Cpus_allowed:   3
+Cpus_allowed_list:      0-1
+voluntary_ctxt_switches:        1125
+nonvoluntary_ctxt_switches:     301
+
+cat /proc/<pid>/maps
+反应进程占用的内存区域
+00008000-0024d000 r-xp 00000000 1f:01 921        /bin/busybox
+00254000-00263000 rw-p 00244000 1f:01 921        /bin/busybox
+00263000-00382000 rw-p 00000000 00:00 0 
+006da000-006fc000 rw-p 00000000 00:00 0          [heap]
+40093000-40094000 rw-p 00000000 00:00 0 
+be96b000-be98c000 rw-p 00000000 00:00 0          [stack]
+ffff0000-ffff1000 r-xp 00000000 00:00 0          [vectors]
+每行数据意思：
+开始——结束	访问权限	偏移	主设备号:次设备号	i节点	文件
